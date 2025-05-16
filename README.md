@@ -102,6 +102,9 @@ This application is built with FastHTML and is designed to run behind a proxy. F
 3. **Install Dependencies**
    - Install the required packages:
      ```bash
+     cd ./python-package
+     pip install .
+     cd ..
      pip install -r requirements.txt
      ```
 
