@@ -26,14 +26,20 @@ class ReportDropdown(Dropdown):
     # Overwrite the build_component method ensuring it has the same parameters as the parent class's method
     def build_component(self, entity_id, model):
         # Set the `label` attribute to the `name` attribute for the model
-        self.label = model.name
+        #self.label = model.name
+        self.label = f"{model.name} Selection"  # Example: "Employee Selection"
         # Return the output from the parent class's build_component method
         return super().build_component(entity_id, model)
     
     # Overwrite the `component_data` method with the same parameters as the parent class method
     def component_data(self, entity_id, model):
-        # Using the model argument, call the employee_events method that returns the user-type's names and ids
-        return model.get_user_options()  # Assuming this method exists in Employee and Team classes
+        # Get the options from the model
+        options = model.get_user_options()
+        if not options:
+            return []  # Or raise an exception/log a warning
+        print(f"Options for {model.name}: {options}")  # Or use logging
+        # Swap the order of the tuple elements to (id, name)
+        return [(str(opt[1]), opt[0]) for opt in options]
 
 # Create a subclass of base_components/BaseComponent called `Header`
 class Header(BaseComponent):
@@ -131,15 +137,16 @@ class NotesTable(DataTable):
         # Pass the entity_id to the model's .notes method and return the output
         return model.notes(entity_id)
 
+PROXY_PREFIX = "/proxy/5001"
 class DashboardFilters(FormGroup):
     id = "top-filters"
-    action = "/update_data"
+    action = f"{PROXY_PREFIX}/update_data"
     method = "POST"
     children = [
         Radio(
             values=["Employee", "Team"],
             name='profile_type',
-            hx_get='/update_dropdown',
+            hx_get=f"{PROXY_PREFIX}/update_dropdown",
             hx_target='#selector'
         ),
         ReportDropdown(
@@ -173,17 +180,30 @@ def index():
 # Create a route for a GET request with path parameterized for employee ID
 @app.get("/employee/{entity_id}")
 def employee(entity_id: str):
-    # Call the initialized report, pass the ID and an instance of Employee, return the result
-    return report(entity_id, Employee())
+    try:
+        entity_id = int(entity_id) # Validate as integer
+        # Call the initialized report, pass the ID and an instance of Employee, return the result
+        return report(entity_id, Employee())
+    except ValueError:
+        return "Invalid employee ID: must be an integer", 400
+    except Exception as e:
+        return f"Error generating report: {str(e)}", 500     
 
 # Create a route for a GET request with path parameterized for team ID
 @app.get("/team/{entity_id}")
 def team(entity_id: str):
-    # Call the initialized report, pass the ID and an instance of Team, return the result
-    return report(entity_id, Team())
+    try:
+        entity_id = int(entity_id)  # Validate as integer
+        # Call the initialized report, pass the ID and an instance of Team, return the result
+        return report(entity_id, Team())        
+    except ValueError:
+        return "Invalid team ID: must be an integer", 400
+    except Exception as e:
+        return f"Error generating report: {str(e)}", 500
+
 
 # Keep the below code unchanged!
-@app.get('/update_dropdown{r}')
+@app.get('/update_dropdown')
 def update_dropdown(r):
     dropdown = DashboardFilters.children[1]
     print('PARAM', r.query_params['profile_type'])
