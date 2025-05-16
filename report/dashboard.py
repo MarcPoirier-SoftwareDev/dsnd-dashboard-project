@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 from employee_events import QueryBase, Employee, Team
 
 # Import the load_model function from the utils.py file
-from utils import load_model
+from .utils import load_model
 
 """
 Below, we import the parent classes
 you will use for subclassing
 """
-from base_components import (
+from .base_components import (
     Dropdown,
     BaseComponent,
     Radio,
@@ -19,7 +19,7 @@ from base_components import (
     DataTable
 )
 
-from combined_components import FormGroup, CombinedComponent
+from .combined_components import FormGroup, CombinedComponent
 
 # Create a subclass of base_components/Dropdown called `ReportDropdown`
 class ReportDropdown(Dropdown):
@@ -137,16 +137,13 @@ class NotesTable(DataTable):
         # Pass the entity_id to the model's .notes method and return the output
         return model.notes(entity_id)
 
-PROXY_PREFIX = "/proxy/5001"
 class DashboardFilters(FormGroup):
     id = "top-filters"
-    action = f"{PROXY_PREFIX}/update_data"
     method = "POST"
     children = [
         Radio(
             values=["Employee", "Team"],
             name='profile_type',
-            hx_get=f"{PROXY_PREFIX}/update_dropdown",
             hx_target='#selector'
         ),
         ReportDropdown(
@@ -155,8 +152,17 @@ class DashboardFilters(FormGroup):
         )
     ]
 
+    def __call__(self, *args, request=None, **kwargs):
+        self.action = request.url_for('update_data') if request else '/update_data'
+        self.children[0].hx_get = request.url_for('update_dropdown') if request else '/update_dropdown'
+        return super().__call__(*args, **kwargs)
+
 # Create a subclass of CombinedComponent called `Report`
 class Report(CombinedComponent):
+    def __call__(self, entity_id, model, request=None):
+        return Div(
+            *[child(entity_id, model, request=request) if isinstance(child, DashboardFilters) else child(entity_id, model) for child in self.children]
+        )
     # Set the `children` class attribute to a list containing initialized instances of Header, DashboardFilters, Visualizations, and NotesTable
     children = [
         Header(),
@@ -173,17 +179,17 @@ report = Report()
 
 # Create a route for a GET request with the path set to the root
 @app.get("/")
-def index():
+def index(request):
     # Call the initialized report, pass integer 1 and an instance of Employee, return the result
-    return report(1, Employee())
+    return report(1, Employee(),request)
 
 # Create a route for a GET request with path parameterized for employee ID
 @app.get("/employee/{entity_id}")
-def employee(entity_id: str):
+def employee(entity_id: str, request):
     try:
         entity_id = int(entity_id) # Validate as integer
         # Call the initialized report, pass the ID and an instance of Employee, return the result
-        return report(entity_id, Employee())
+        return report(entity_id, Employee(),request=request)
     except ValueError:
         return "Invalid employee ID: must be an integer", 400
     except Exception as e:
@@ -191,11 +197,11 @@ def employee(entity_id: str):
 
 # Create a route for a GET request with path parameterized for team ID
 @app.get("/team/{entity_id}")
-def team(entity_id: str):
+def team(entity_id: str, request):
     try:
         entity_id = int(entity_id)  # Validate as integer
         # Call the initialized report, pass the ID and an instance of Team, return the result
-        return report(entity_id, Team())        
+        return report(entity_id, Team(), request=request)        
     except ValueError:
         return "Invalid team ID: must be an integer", 400
     except Exception as e:
@@ -203,7 +209,7 @@ def team(entity_id: str):
 
 
 # Keep the below code unchanged!
-@app.get('/update_dropdown')
+@app.get('/update_dropdown', name='update_dropdown')
 def update_dropdown(r):
     dropdown = DashboardFilters.children[1]
     print('PARAM', r.query_params['profile_type'])
@@ -212,7 +218,7 @@ def update_dropdown(r):
     elif r.query_params['profile_type'] == 'Employee':
         return dropdown(None, Employee())
 
-@app.post('/update_data')
+@app.post('/update_data', name='update_data')
 async def update_data(r):
     from fasthtml.common import RedirectResponse
     data = await r.form()
